@@ -1,0 +1,12 @@
+# OS / editor
+.DS_Store
+.idea/
+*.iml
+*.log
+
+# Node (relay also has its own .gitignore)
+node_modules/
+
+# Build artifacts / APKs (built locally, not versioned)
+*.apk
+*.aab

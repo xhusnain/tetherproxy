@@ -1,0 +1,18 @@
+# Android / Gradle build outputs
+build/
+.gradle/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Machine-specific (SDK path) — each dev sets their own
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Artifacts
+*.apk
+*.aab

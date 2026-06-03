@@ -1,0 +1,18 @@
+services:
+  relay:
+    build: .
+    image: tetherproxy-relay:latest
+    container_name: tetherproxy-relay
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"   # proxy
+      - "8443:8443"   # wss tunnel
+      # - "8081:8081" # optional TLS proxy (uncomment with PROXY_TLS_PORT)
+    volumes:
+      - relay-data:/data
+      - relay-certs:/certs
+
+volumes:
+  relay-data:
+  relay-certs:
