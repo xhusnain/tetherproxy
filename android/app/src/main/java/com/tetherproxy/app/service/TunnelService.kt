@@ -81,11 +81,15 @@ class TunnelService : Service(), DialerSink {
     }
 
     private fun startTunnel() {
-        // Idempotent: a duplicate start (re-tap, START_STICKY redelivery, boot
-        // receiver) must NOT spin up a second Reconnector — that would register a
-        // second network callback and run a parallel connect loop, producing
-        // overlapping tunnels. If we are already running, do nothing.
-        if (reconnector != null) return
+        // Tear down any previous connection manager first so we never run two in
+        // parallel: a duplicate start (re-tap, START_STICKY redelivery, boot
+        // receiver) restarts cleanly instead of spawning a second Reconnector with
+        // its own network callback and connect loop (which caused overlapping
+        // tunnels). Stopping is synchronous, so a single manager is active.
+        reconnector?.stop()
+        reconnector = null
+        wsClient?.close()
+        wsClient = null
 
         startForeground(
             NOTIF_ID,
