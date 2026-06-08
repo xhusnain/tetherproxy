@@ -110,7 +110,9 @@ export class TunnelServer {
     let authed: Tunnel | null = null;
     const peer = (ws as { _socket?: { remoteAddress?: string } })._socket
       ?.remoteAddress;
-    console.log(`[relay] tunnel: ws connected from ${peer ?? "unknown"}`);
+    console.log(
+      `[relay] tunnel: ws connected from ${peer ?? "unknown"} (total clients=${this.wss.clients.size})`,
+    );
 
     ws.on("message", (data) => {
       const buf = toBuffer(data);
@@ -210,6 +212,9 @@ export class TunnelServer {
     const tunnel = new Tunnel(ws, payload.deviceId, payload.proxyUsername);
     // Replace any prior live tunnel (single-device v1).
     if (this.liveTunnel && this.liveTunnel.ws !== ws) {
+      console.log(
+        `[relay] tunnel: REPLACING prior live tunnel (device=${payload.deviceId}) — overlapping connection`,
+      );
       this.liveTunnel.ws.close(1000, "replaced by new device");
     }
     this.liveTunnel = tunnel;
