@@ -71,6 +71,11 @@ docker compose up -d
 The store (`/data`) and the generated TLS cert (`/certs`) persist on named Docker volumes,
 so credentials and the cert survive restarts.
 
+> **Low-RAM VM? Run without Docker (PM2).** On a tiny instance (e.g. 1 GB) the Docker
+> daemon's ~300 MB overhead is wasteful for a single Node process. The relay has **no
+> native dependencies**, so you can run it directly — see
+> [Run without Docker (PM2)](#run-without-docker-pm2) below.
+
 ## 5. Read the printed TLS fingerprint (for phone pinning)
 
 On first boot the relay generates a self-signed cert and prints its SHA-256 fingerprint:
@@ -126,6 +131,41 @@ docker compose logs -f relay     # follow logs
 docker compose restart relay     # restart
 docker compose down              # stop (volumes persist)
 docker compose pull && docker compose up -d --build   # update
+```
+
+## Run without Docker (PM2)
+
+Best for small VMs (the relay has **no native dependencies**, so this needs no compiler
+and very little RAM). Requires **Node.js 20.6+** (for the built-in `--env-file` flag).
+
+```bash
+# Install Node 20+ and PM2 (once)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install -g pm2
+
+# From the relay/ directory:
+cp .env.example .env
+# Set a long random pairing token:
+sed -i "s|^PAIRING_TOKEN=.*|PAIRING_TOKEN=$(head -c 32 /dev/urandom | base64)|" .env
+
+npm ci            # no build toolchain needed — pure JS deps only
+npm run build     # compiles TypeScript -> dist/ (fast, low memory)
+
+pm2 start ecosystem.config.cjs   # starts the relay, reads .env, stores data next to the app
+pm2 save                         # remember it across reboots
+pm2 startup                      # print the command to enable the boot service (run it)
+```
+
+The store (`data/`) and TLS cert (`certs/`) are written next to the app, so credentials
+and the pinned cert survive restarts.
+
+```bash
+pm2 logs tetherproxy-relay                              # follow logs
+pm2 logs tetherproxy-relay | grep -A1 "SHA-256"         # read the cert fingerprint
+pm2 restart tetherproxy-relay                           # restart
+pm2 stop tetherproxy-relay                              # stop
+git pull && npm ci && npm run build && pm2 restart tetherproxy-relay   # update
 ```
 
 ## Environment variables

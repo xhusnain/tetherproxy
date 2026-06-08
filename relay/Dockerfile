@@ -1,8 +1,6 @@
 # ---- Build stage ----
 FROM node:lts-alpine AS build
 WORKDIR /app
-# Toolchain for better-sqlite3 native build.
-RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
@@ -13,10 +11,8 @@ RUN npm run build
 FROM node:lts-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# Build deps needed again to compile better-sqlite3 for production install.
-RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && apk del python3 make g++
+RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 # Persisted store + generated TLS cert live on mounted volumes.
 RUN mkdir -p /data /certs
