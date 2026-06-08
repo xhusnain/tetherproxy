@@ -108,6 +108,9 @@ export class TunnelServer {
 
   private onConnection(ws: WebSocket): void {
     let authed: Tunnel | null = null;
+    const peer = (ws as { _socket?: { remoteAddress?: string } })._socket
+      ?.remoteAddress;
+    console.log(`[relay] tunnel: ws connected from ${peer ?? "unknown"}`);
 
     ws.on("message", (data) => {
       const buf = toBuffer(data);
@@ -138,7 +141,11 @@ export class TunnelServer {
       this.handleAuthedFrame(authed, frame);
     });
 
-    ws.on("close", () => {
+    ws.on("close", (code, reasonBuf) => {
+      const reason = reasonBuf?.toString() || "";
+      console.log(
+        `[relay] tunnel: ws closed code=${code} reason="${reason}" authed=${authed !== null}`,
+      );
       const t = this.timers.get(ws);
       if (t) clearInterval(t);
       if (authed) {
@@ -168,6 +175,9 @@ export class TunnelServer {
     }
 
     if (payload.pairingToken !== this.pairingToken) {
+      console.log(
+        `[relay] tunnel: AUTH_FAIL invalid pairing token (device=${payload.deviceId})`,
+      );
       ws.send(
         encodeJsonFrame(FrameType.AUTH_FAIL, 0, {
           reason: "invalid pairing token",
@@ -205,6 +215,9 @@ export class TunnelServer {
     this.liveTunnel = tunnel;
     ws.send(encodeFrame(FrameType.AUTH_OK, 0));
     this.startHeartbeat(ws);
+    console.log(
+      `[relay] tunnel: AUTH_OK device=${payload.deviceId} user=${payload.proxyUsername}`,
+    );
     return tunnel;
   }
 
