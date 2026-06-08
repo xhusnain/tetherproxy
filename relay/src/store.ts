@@ -68,6 +68,15 @@ export class Store {
    */
   upsertDevice(input: UpsertInput): void {
     const existing = this.devices.get(input.deviceId);
+    // Enforce a unique proxyUsername (the original SQLite schema had UNIQUE on it):
+    // a username maps to exactly one device, so re-pairing the same username from a
+    // new deviceId (e.g. after a reinstall) must supersede the stale record rather
+    // than leave a second one that shadows it on lookup.
+    for (const [id, rec] of this.devices) {
+      if (id !== input.deviceId && rec.proxyUsername === input.proxyUsername) {
+        this.devices.delete(id);
+      }
+    }
     this.devices.set(input.deviceId, {
       deviceId: input.deviceId,
       proxyUsername: input.proxyUsername,

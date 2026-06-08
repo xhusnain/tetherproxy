@@ -55,6 +55,27 @@ describe("Store re-pair (upsert on conflict)", () => {
     expect(rec.createdAt).toBe(first.createdAt);
   });
 
+  it("a new deviceId re-pairing the same username supersedes the old device", () => {
+    store = new Store(":memory:");
+    store.upsertDevice({
+      deviceId: "old-device",
+      proxyUsername: "husnain",
+      bcryptPassword: "$2a$10$oldpass",
+    });
+    // Same username, different deviceId (e.g. app reinstalled -> fresh UUID).
+    store.upsertDevice({
+      deviceId: "new-device",
+      proxyUsername: "husnain",
+      bcryptPassword: "$2a$10$newpass",
+    });
+    // Lookup by username must return the NEW device's password, not the stale one.
+    const rec = store.findByUsername("husnain") as DeviceRecord;
+    expect(rec.deviceId).toBe("new-device");
+    expect(rec.bcryptPassword).toBe("$2a$10$newpass");
+    // The old device record is gone (username is unique).
+    expect(store.findByDeviceId("old-device")).toBeNull();
+  });
+
   it("looks up by deviceId", () => {
     store = new Store(":memory:");
     store.upsertDevice({
