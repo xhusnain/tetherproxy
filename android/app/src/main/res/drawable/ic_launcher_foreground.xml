@@ -1,0 +1,34 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Phone body (white) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,30 h20 a5,5 0 0 1 5,5 v38 a5,5 0 0 1 -5,5 h-20 a5,5 0 0 1 -5,-5 v-38 a5,5 0 0 1 5,-5 z" />
+
+    <!-- Screen (background color) -->
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M44,37 h20 v30 h-20 z" />
+
+    <!-- Upload arrow on the screen (white) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,41 l7,9 h-4.5 v8 h-5 v-8 h-4.5 z" />
+
+    <!-- Home indicator dot (white) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51,71.5 h6 v2 h-6 z" />
+
+    <!-- Signal arcs (white) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M70,34 a8,8 0 0 1 5.5,2.4 l-2.2,2.2 a5,5 0 0 0 -3.3,-1.5 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M70,28 a14,14 0 0 1 9.7,4 l-2.2,2.2 a11,11 0 0 0 -7.5,-3.1 z" />
+</vector>

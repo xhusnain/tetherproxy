@@ -84,6 +84,22 @@ export function createRelay(config: Config): Relay {
       console.log(`[relay] TLS SHA-256 fingerprint (pin in phone):`);
       console.log(`[relay]   ${tls.fingerprint}`);
 
+      // If the public host is known, print a single pairing string the phone app
+      // can import in one tap (Setup -> "Paste config from clipboard").
+      if (config.publicHost) {
+        const pairing = {
+          host: config.publicHost,
+          tunnelPort,
+          proxyPort,
+          proxyTlsPort,
+          token: config.pairingToken,
+          fingerprint: tls.fingerprint,
+        };
+        const encoded = Buffer.from(JSON.stringify(pairing)).toString("base64");
+        console.log(`[relay] pairing config (paste into the app):`);
+        console.log(`[relay]   ${encoded}`);
+      }
+
       return {
         proxyPort,
         proxyTlsPort,

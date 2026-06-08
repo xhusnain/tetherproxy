@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.atomic.AtomicLong
 
-class TunnelService : Service(), WsEvents, DialerSink {
+class TunnelService : Service(), DialerSink {
 
     private val scope = CoroutineScope(SupervisorJob())
     private lateinit var store: Store
@@ -42,6 +42,19 @@ class TunnelService : Service(), WsEvents, DialerSink {
     private var reconnector: Reconnector? = null
     private var wsClient: WsClient? = null
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /**
+     * Guards [openWebSocket] so concurrent reconnect triggers (a backoff retry and
+     * a network-change force-reconnect firing together) can never interleave and
+     * leave two live sockets. [connGen] is bumped on every connection attempt;
+     * each socket's callbacks carry their generation and are ignored once a newer
+     * attempt has started, so a stale/superseded socket can never re-trigger a
+     * reconnect — which was the cause of the overlapping-connection ping-pong loop.
+     */
+    private val connLock = Any()
+
+    @Volatile
+    private var connGen = 0
 
     private val bytesIn = AtomicLong(0)
     private val bytesOut = AtomicLong(0)
@@ -68,6 +81,12 @@ class TunnelService : Service(), WsEvents, DialerSink {
     }
 
     private fun startTunnel() {
+        // Idempotent: a duplicate start (re-tap, START_STICKY redelivery, boot
+        // receiver) must NOT spin up a second Reconnector — that would register a
+        // second network callback and run a parallel connect loop, producing
+        // overlapping tunnels. If we are already running, do nothing.
+        if (reconnector != null) return
+
         startForeground(
             NOTIF_ID,
             buildNotification("Connecting…"),
@@ -87,11 +106,14 @@ class TunnelService : Service(), WsEvents, DialerSink {
         rc.start()
     }
 
-    private fun openWebSocket() {
+    private fun openWebSocket() = synchronized(connLock) {
         if (!store.isConfigured()) {
             publish(ConnState.FAILED, error = "not configured")
             return
         }
+        // Bump the generation first: any in-flight older socket's callbacks become
+        // stale immediately and are ignored by GenGuardedEvents below.
+        val myGen = ++connGen
         publish(ConnState.AUTHENTICATING)
         // Never leave two sockets open: close the previous client before opening a
         // new one. close() marks it superseded so its onClosed cannot re-trigger a
@@ -111,7 +133,7 @@ class TunnelService : Service(), WsEvents, DialerSink {
             port = store.tunnelPort,
             pinnedSha256Hex = store.pinnedFingerprint,
             authPayload = authPayload,
-            events = this,
+            events = GenGuardedEvents(myGen),
             onPinObserved = { fp ->
                 if (store.pinnedFingerprint.isBlank()) store.pinnedFingerprint = fp
             }
@@ -130,44 +152,61 @@ class TunnelService : Service(), WsEvents, DialerSink {
         publish(ConnState.STOPPED)
     }
 
-    // ---- WsEvents ----
+    // ---- WsEvents (generation-guarded) ----
 
-    override fun onOpen() {
-        // AUTH already sent by WsClient; wait for AUTH_OK.
-    }
+    /**
+     * Per-connection event sink. Every callback first checks that its [gen] is
+     * still the current [connGen]; once a newer connection attempt has started,
+     * this (now stale) socket's events are dropped. This is what stops a
+     * superseded socket's close from scheduling yet another reconnect and
+     * producing the overlapping-connection loop.
+     */
+    private inner class GenGuardedEvents(private val gen: Int) : WsEvents {
+        private fun current(): Boolean = gen == connGen
 
-    override fun onAuthOk() {
-        reconnector?.onConnected()
-        publish(ConnState.CONNECTED)
-        updateNotification("Connected to ${store.relayHost}")
-    }
-
-    override fun onAuthFail(reason: String) {
-        publish(ConnState.FAILED, error = "auth failed: $reason")
-        updateNotification("Auth failed: $reason")
-        // Do not auto-retry an auth failure aggressively; still schedule a backoff retry.
-        reconnector?.scheduleReconnect()
-    }
-
-    override fun onFrame(frame: Frame) {
-        when (frame.type) {
-            FrameType.OPEN -> {
-                val json = Frames.parseJson(String(frame.payload, Charsets.UTF_8))
-                val host = json["host"] ?: return
-                val port = json["port"]?.toIntOrNull() ?: return
-                dialer.onOpen(frame.streamId, host, port)
-            }
-            FrameType.DATA -> dialer.onData(frame.streamId, frame.payload)
-            FrameType.CLOSE -> dialer.onClose(frame.streamId)
-            else -> { /* OPEN_OK/OPEN_FAIL/PONG are phone-originated or handled elsewhere */ }
+        override fun onOpen() {
+            // AUTH already sent by WsClient; wait for AUTH_OK.
         }
-    }
 
-    override fun onClosed(reason: String) {
-        dialer.closeAll()
-        publish(ConnState.RECONNECTING, error = reason)
-        updateNotification("Reconnecting…")
-        reconnector?.scheduleReconnect()
+        override fun onAuthOk() {
+            if (!current()) return
+            reconnector?.onConnected()
+            publish(ConnState.CONNECTED)
+            updateNotification("Connected to ${store.relayHost}")
+        }
+
+        override fun onAuthFail(reason: String) {
+            if (!current()) return
+            publish(ConnState.FAILED, error = "auth failed: $reason")
+            updateNotification("Auth failed: $reason")
+            // Do not auto-retry an auth failure aggressively; still schedule a backoff retry.
+            reconnector?.scheduleReconnect()
+        }
+
+        override fun onFrame(frame: Frame) {
+            if (!current()) return
+            when (frame.type) {
+                FrameType.OPEN -> {
+                    val json = Frames.parseJson(String(frame.payload, Charsets.UTF_8))
+                    val host = json["host"] ?: return
+                    val port = json["port"]?.toIntOrNull() ?: return
+                    dialer.onOpen(frame.streamId, host, port)
+                }
+                FrameType.DATA -> dialer.onData(frame.streamId, frame.payload)
+                FrameType.CLOSE -> dialer.onClose(frame.streamId)
+                else -> { /* OPEN_OK/OPEN_FAIL/PONG are phone-originated or handled elsewhere */ }
+            }
+        }
+
+        override fun onClosed(reason: String) {
+            // A stale (superseded) socket closing must NOT schedule a reconnect —
+            // that was the root of the ping-pong loop.
+            if (!current()) return
+            dialer.closeAll()
+            publish(ConnState.RECONNECTING, error = reason)
+            updateNotification("Reconnecting…")
+            reconnector?.scheduleReconnect()
+        }
     }
 
     // ---- DialerSink ----

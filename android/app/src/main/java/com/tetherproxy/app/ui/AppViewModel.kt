@@ -1,6 +1,8 @@
 package com.tetherproxy.app.ui
 
 import android.app.Application
+import android.util.Base64
+import org.json.JSONObject
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tetherproxy.app.data.Store
@@ -55,6 +57,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun update(transform: (SetupForm) -> SetupForm) {
         _form.value = transform(_form.value)
+    }
+
+    /**
+     * One-tap setup: fill the relay fields from a single pairing string instead of
+     * typing each one. Accepts the relay's base64-encoded JSON (optionally prefixed
+     * with "tetherproxy:") or raw JSON with keys host/tunnelPort/proxyPort/
+     * proxyTlsPort/token/fingerprint/username. The proxy password stays
+     * user-chosen (tap Generate). Returns true if a valid config was parsed.
+     */
+    fun importConfig(raw: String): Boolean {
+        val trimmed = raw.trim().removePrefix("tetherproxy:").trim()
+        val jsonText = try {
+            if (trimmed.startsWith("{")) trimmed
+            else String(Base64.decode(trimmed, Base64.DEFAULT), Charsets.UTF_8)
+        } catch (e: Exception) {
+            return false
+        }
+        val j = try {
+            JSONObject(jsonText)
+        } catch (e: Exception) {
+            return false
+        }
+        val cur = _form.value
+        _form.value = cur.copy(
+            relayHost = j.optString("host", cur.relayHost),
+            tunnelPort = j.optInt("tunnelPort", cur.tunnelPort.toIntOrNull() ?: 8443).toString(),
+            proxyPort = j.optInt("proxyPort", cur.proxyPort.toIntOrNull() ?: 8080).toString(),
+            proxyTlsPort = j.optInt("proxyTlsPort", cur.proxyTlsPort.toIntOrNull() ?: 8081).toString(),
+            pairingToken = j.optString("token", cur.pairingToken),
+            pinnedFingerprint = j.optString("fingerprint", cur.pinnedFingerprint),
+            proxyUsername = j.optString("username", cur.proxyUsername)
+        )
+        return true
     }
 
     /**

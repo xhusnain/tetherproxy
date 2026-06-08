@@ -16,6 +16,8 @@ export interface Config {
   tlsCertPath: string;
   tlsKeyPath: string;
   rateLimit: RateLimitConfig;
+  /** Public IP/host of the relay; used only to print the app pairing string. */
+  publicHost: string | undefined;
 }
 
 function parsePort(raw: string | undefined, name: string, def: number): number {
@@ -79,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     certDir,
     tlsCertPath: env.TLS_CERT_PATH || `${certDir}/tunnel-cert.pem`,
     tlsKeyPath: env.TLS_KEY_PATH || `${certDir}/tunnel-key.pem`,
+    publicHost: env.RELAY_PUBLIC_HOST || undefined,
     rateLimit: {
       maxTotal: parsePositiveInt(
         env.RATE_LIMIT_MAX_TOTAL,
