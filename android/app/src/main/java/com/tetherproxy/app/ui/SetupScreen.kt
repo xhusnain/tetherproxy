@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -22,16 +24,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
+import com.tetherproxy.app.R
 
 @Composable
 fun SetupScreen(viewModel: AppViewModel, onGoToStatus: () -> Unit) {
     val form by viewModel.form.collectAsState()
     val clipboard = LocalClipboardManager.current
     var importMsg by remember { mutableStateOf<String?>(null) }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -109,11 +115,28 @@ fun SetupScreen(viewModel: AppViewModel, onGoToStatus: () -> Unit) {
             onValueChange = { v -> viewModel.update { it.copy(proxyPassword = v) } },
             label = { Text("Proxy password") },
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (passwordVisible) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
             trailingIcon = {
-                // Spec §4.2/§8: suggest a strong random password.
-                TextButton(onClick = { viewModel.generatePassword() }) {
-                    Text("Generate")
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    // Eye toggle: show/hide the password so the user can read what
+                    // Generate produced (or what they typed).
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            painter = painterResource(
+                                if (passwordVisible) R.drawable.ic_visibility_off
+                                else R.drawable.ic_visibility
+                            ),
+                            contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                        )
+                    }
+                    // Spec §4.2/§8: suggest a strong random password.
+                    TextButton(onClick = { viewModel.generatePassword() }) {
+                        Text("Generate")
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth()
