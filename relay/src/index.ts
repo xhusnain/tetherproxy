@@ -126,11 +126,11 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
-// Run only when invoked directly (not when imported by tests).
-const isDirectRun =
-  process.argv[1] !== undefined &&
-  import.meta.url === `file://${process.argv[1]}`;
-if (isDirectRun) {
+// Boot as the entrypoint. Skipped only under the vitest test runner (which sets
+// VITEST and imports createRelay directly). A plain argv[1] check is unreliable
+// here because process managers like PM2 wrap the ESM entry in their own loader,
+// which would leave the relay "online" but never started.
+if (process.env.VITEST === undefined) {
   main().catch((err) => {
     console.error("[relay] fatal:", err);
     process.exit(1);
